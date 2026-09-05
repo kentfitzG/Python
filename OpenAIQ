@@ -1,0 +1,110 @@
+"""
+Simple script: edit the `QUESTIONS` list below with five questions you want
+the script to ask, then run it. For safety the previous OpenAI API key and
+client usage have been removed from this file — re-add external keys only
+via environment variables or a secure vault if needed.
+"""
+
+import os
+import getpass
+from pathlib import Path
+from openai import OpenAI
+
+QUESTIONS = [
+    "What's your name?",
+    "What's your primary goal for today?",
+    "What's one thing you're stuck on right now?",
+    "Which programming language do you prefer?",
+    "Do you have a deadline or time constraint?",
+]
+
+MODEL = "gpt-4o-mini"
+
+
+def ask_ai_questions(questions, model=MODEL):
+    api_key = get_api_key()
+    if not api_key:
+        print("No API key provided; aborting.")
+        return
+
+    client = OpenAI(api_key=api_key)
+    responses = {}
+
+    for q in questions:
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": q}],
+            )
+            text = resp.choices[0].message.content
+        except Exception as e:
+            text = f"<error: {e}>"
+        responses[q] = text
+
+    print("\nAI responses:")
+    for q in questions:
+        print(f"- {q} -> {responses[q]}")
+
+
+def _read_dotenv(path: Path):
+    if not path.exists():
+        return None
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("OPENAI_API_KEY="):
+                _, val = line.split("=", 1)
+                return val.strip().strip('"').strip("'")
+    except Exception:
+        return None
+    return None
+
+
+def get_api_key() -> str:
+    """Return an API key from env, .env, or by prompting the user (hidden).
+
+    If the key is obtained by prompt the user will be offered to save it to
+    a local `.env` file in the script's directory for convenience.
+    """
+    # 1) environment
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        return key
+
+    # 2) .env in script directory
+    env_path = Path(__file__).parent / ".env"
+    key = _read_dotenv(env_path)
+    if key:
+        os.environ["OPENAI_API_KEY"] = key
+        return key
+
+    # 3) prompt (hidden)
+    try:
+        key = getpass.getpass("Enter your OpenAI API key (input hidden): ")
+    except Exception:
+        # fallback to visible input
+        key = input("Enter your OpenAI API key: ")
+
+    key = key.strip()
+    if not key:
+        return ""
+
+    os.environ["OPENAI_API_KEY"] = key
+
+    # Offer to save
+    save = input("Save API key to .env in this folder for future runs? (y/N): ").strip().lower()
+    if save == "y":
+        try:
+            with env_path.open("a", encoding="utf-8") as f:
+                f.write(f"OPENAI_API_KEY=\"{key}\"\n")
+            print(f"Saved key to {env_path}")
+        except Exception as e:
+            print(f"Failed to save .env: {e}")
+
+    return key
+
+
+if __name__ == "__main__":
+    ask_ai_questions(QUESTIONS)
